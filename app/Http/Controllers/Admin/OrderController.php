@@ -3,20 +3,29 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Accessory;
-use App\Models\NotificationLog;
 use App\Models\Order;
-use App\Models\Phone;
-use App\Models\ProductVariant;
-use Illuminate\Support\Facades\DB;
+use App\Models\Setting;
+use App\Services\OrderInventoryService;
+use App\Services\OrderNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         return view('admin.orders.index', [
-            'orders' => Order::with('items')->latest()->paginate(12),
+            'orders' => Order::query()
+                ->with('items')
+                ->when($request->search, fn ($query, $search) => $query->where(fn ($q) => $q
+                    ->where('order_number', 'like', "%{$search}%")
+                    ->orWhere('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_phone', 'like', "%{$search}%")))
+                ->when($request->status, fn ($query, $status) => $query->where('status', $status))
+                ->when($request->payment_status, fn ($query, $status) => $query->where('payment_status', $status))
+                ->latest()
+                ->paginate(12)
+                ->withQueryString(),
             'statuses' => Order::STATUSES,
             'paymentStatuses' => Order::PAYMENT_STATUSES,
         ]);
@@ -31,29 +40,30 @@ class OrderController extends Controller
         ]);
     }
 
-    public function update(Request $request, Order $order)
-    {
+    public function update(
+        Request $request,
+        Order $order,
+        OrderInventoryService $inventory,
+        OrderNotificationService $notifications
+    ) {
         $data = $request->validate([
-            'status' => ['required', 'in:' . implode(',', array_keys(Order::STATUSES))],
-            'payment_status' => ['required', 'in:' . implode(',', array_keys(Order::PAYMENT_STATUSES))],
+            'status' => ['required', 'in:'.implode(',', array_keys(Order::STATUSES))],
+            'payment_status' => ['required', 'in:'.implode(',', array_keys(Order::PAYMENT_STATUSES))],
             'payment_reference' => ['nullable', 'string', 'max:120'],
         ]);
 
         $oldStatus = $order->status;
         $newStatus = $data['status'];
         $oldPaymentStatus = $order->payment_status;
+        $reservationHours = max(1, (int) Setting::getValue('reservation_hours', '24'));
 
-        if ($oldStatus === 'cancelled' && $newStatus !== 'cancelled' && ! $this->hasStockFor($order)) {
-            return back()->withErrors(['status' => 'Not enough stock to reactivate this order.']);
-        }
-
-        DB::transaction(function () use ($order, $oldStatus, $newStatus, $oldPaymentStatus, $data) {
+        DB::transaction(function () use ($order, $oldStatus, $newStatus, $data, $inventory, $reservationHours) {
             if ($oldStatus !== 'cancelled' && $newStatus === 'cancelled') {
-                $this->adjustStock($order, +1);
+                $inventory->release($order);
             }
 
             if ($oldStatus === 'cancelled' && $newStatus !== 'cancelled') {
-                $this->adjustStock($order, -1);
+                $inventory->reserveAgain($order);
             }
 
             $order->update([
@@ -61,58 +71,15 @@ class OrderController extends Controller
                 'payment_status' => $data['payment_status'],
                 'payment_reference' => $data['payment_reference'] ?? $order->payment_reference,
                 'paid_at' => $data['payment_status'] === 'paid' ? ($order->paid_at ?? now()) : null,
+                'reserved_until' => $newStatus === 'new' ? now()->addHours($reservationHours) : null,
             ]);
 
-            if ($oldStatus !== $newStatus || $oldPaymentStatus !== $data['payment_status']) {
-                NotificationLog::create([
-                    'order_id' => $order->id,
-                    'channel' => 'customer',
-                    'recipient' => $order->customer_phone,
-                    'subject' => 'Order update '.$order->order_number,
-                    'message' => 'Order status: '.Order::STATUSES[$newStatus].'. Payment: '.Order::PAYMENT_STATUSES[$data['payment_status']].'.',
-                    'status' => 'queued',
-                ]);
-            }
         });
 
+        if ($oldStatus !== $newStatus || $oldPaymentStatus !== $data['payment_status']) {
+            $notifications->orderUpdated($order->fresh());
+        }
+
         return back()->with('status', 'Order status updated.');
-    }
-
-    private function hasStockFor(Order $order): bool
-    {
-        foreach ($order->items as $item) {
-            $product = $this->findStockTarget($item);
-
-            if (! $product || $product->stock < $item->quantity) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function adjustStock(Order $order, int $direction): void
-    {
-        foreach ($order->items as $item) {
-            $product = $this->findStockTarget($item);
-
-            if ($product) {
-                $product->increment('stock', $direction * $item->quantity);
-            }
-        }
-    }
-
-    private function findProduct(string $type, int $id): Phone|Accessory|null
-    {
-        return $type === 'phone' ? Phone::find($id) : Accessory::find($id);
-    }
-
-    private function findStockTarget($item): Phone|Accessory|ProductVariant|null
-    {
-        if ($item->product_variant_id) {
-            return ProductVariant::find($item->product_variant_id);
-        }
-
-        return $this->findProduct($item->item_type, $item->item_id);
     }
 }

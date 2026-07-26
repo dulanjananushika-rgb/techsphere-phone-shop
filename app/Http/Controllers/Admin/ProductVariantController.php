@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Accessory;
+use App\Models\OrderItem;
 use App\Models\Phone;
 use App\Models\ProductVariant;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ class ProductVariantController extends Controller
     public function index()
     {
         return view('admin.variants.index', [
-            'variants' => ProductVariant::latest()->paginate(15),
+            'variants' => ProductVariant::with('product')->latest()->paginate(15),
         ]);
     }
 
@@ -28,7 +29,7 @@ class ProductVariantController extends Controller
     public function create()
     {
         return view('admin.variants.form', [
-            'variant' => new ProductVariant(),
+            'variant' => new ProductVariant,
             'phones' => Phone::with('brand')->orderBy('name')->get(),
             'accessories' => Accessory::orderBy('name')->get(),
         ]);
@@ -79,6 +80,12 @@ class ProductVariantController extends Controller
      */
     public function destroy(ProductVariant $variant)
     {
+        if (OrderItem::where('product_variant_id', $variant->id)->exists()) {
+            return back()->withErrors([
+                'delete' => 'This SKU belongs to an order history. Set it to Hidden instead of deleting it.',
+            ]);
+        }
+
         $variant->delete();
 
         return redirect()->route('admin.variants.index')->with('status', 'Variant deleted.');
@@ -92,7 +99,7 @@ class ProductVariantController extends Controller
             'name' => ['required', 'string', 'max:140'],
             'color' => ['nullable', 'string', 'max:80'],
             'storage' => ['nullable', 'string', 'max:80'],
-            'price' => ['required', 'integer', 'min:0'],
+            'price' => ['required', 'integer', 'min:1'],
             'stock' => ['required', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
         ]);

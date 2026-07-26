@@ -1,31 +1,40 @@
 @extends('layouts.app')
-@section('title', 'Deals | TechSphere')
+@section('title', 'Current Deals | '.$shopSettings['store_name'])
 
 @section('content')
 <section class="section">
     <div class="container">
         <div class="section-head">
             <div>
-                <div class="eyebrow">Shop promotions</div>
-                <h2>Special Deals</h2>
-                <p>Limited-time offers available for selected phones and accessories.</p>
+                <div class="eyebrow">Active promotions</div>
+                <h1>Current deals</h1>
+                <p>Only offers active today are shown. Discounts apply automatically at reservation.</p>
             </div>
         </div>
 
-        <div class="grid grid-2">
+        <div class="offer-grid">
             @forelse($offers as $offer)
-                <div class="offer-card offer-card-large">
-                    <div class="offer-badge">{{ $offer->discount_percentage }}% off</div>
+                <article class="offer-card">
+                    <div class="offer-badge">Save {{ $offer->discount_percentage }}%</div>
                     <h2>{{ $offer->title }}</h2>
                     <p>{{ $offer->description }}</p>
-                    <div class="offer-meta">{{ $offer->starts_at->format('M d') }} - {{ $offer->ends_at->format('M d, Y') }}</div>
-                    @if($offer->phones->count() || $offer->accessories->count())
-                        <p class="muted">Applies to {{ $offer->phones->count() }} phone(s) and {{ $offer->accessories->count() }} accessory item(s).</p>
+                    <div class="offer-meta">{{ $offer->starts_at->format('M d') }} to {{ $offer->ends_at->format('M d, Y') }}</div>
+                    <div class="offer-products">
+                        @foreach($offer->phones as $phone)
+                            <a href="{{ route('phones.show', $phone) }}">{{ $phone->name }}</a>
+                        @endforeach
+                        @foreach($offer->accessories as $accessory)
+                            <a href="{{ route('orders.accessory', $accessory) }}">{{ $accessory->name }}</a>
+                        @endforeach
+                    </div>
+                    @if($offer->phones->isNotEmpty())
+                        <a class="btn btn-primary" href="{{ route('phones.index') }}">Browse eligible phones</a>
+                    @elseif($offer->accessories->isNotEmpty())
+                        <a class="btn btn-primary" href="{{ route('accessories.index') }}">Browse accessories</a>
                     @endif
-                    <a class="btn btn-primary" href="{{ route('phones.index') }}">Shop eligible products</a>
-                </div>
+                </article>
             @empty
-                <div class="empty-state">No active deals right now.</div>
+                <div class="empty-state">There are no active deals today. Check back soon.</div>
             @endforelse
         </div>
     </div>

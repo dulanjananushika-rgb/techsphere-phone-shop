@@ -3,19 +3,23 @@
 namespace App\Http\Controllers;
 
 use App\Models\Accessory;
-use App\Models\NotificationLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Phone;
 use App\Models\ProductVariant;
+use App\Models\Setting;
+use App\Services\OrderNotificationService;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
     public function phone(Phone $phone)
     {
+        abort_unless($phone->is_active, 404);
         $phone->load(['brand', 'activeOffers', 'variants']);
 
         return view('store.order', [
@@ -27,11 +31,13 @@ class OrderController extends Controller
             'variants' => $phone->variants->where('is_active', true),
             'salePrice' => $phone->salePrice(),
             'discount' => $phone->discountAmount(),
+            'checkoutToken' => (string) Str::uuid(),
         ]);
     }
 
     public function accessory(Accessory $accessory)
     {
+        abort_unless($accessory->is_active, 404);
         $accessory->load(['activeOffers', 'variants']);
 
         return view('store.order', [
@@ -43,50 +49,74 @@ class OrderController extends Controller
             'variants' => $accessory->variants->where('is_active', true),
             'salePrice' => $accessory->salePrice(),
             'discount' => $accessory->discountAmount(),
+            'checkoutToken' => (string) Str::uuid(),
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, OrderNotificationService $notifications)
     {
         $data = $request->validate([
+            'checkout_token' => ['required', 'uuid'],
             'item_type' => ['required', 'in:phone,accessory'],
             'item_id' => ['required', 'integer'],
             'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'quantity' => ['required', 'integer', 'min:1', 'max:10'],
             'customer_name' => ['required', 'string', 'max:120'],
             'customer_email' => ['nullable', 'email', 'max:180'],
-            'customer_phone' => ['required', 'string', 'max:30'],
-            'customer_address' => ['nullable', 'string', 'max:500'],
+            'customer_phone' => ['required', 'string', 'regex:/^(?:\\+94|0)?[0-9]{9}$/'],
+            'customer_address' => ['required_if:delivery_method,delivery', 'nullable', 'string', 'max:500'],
             'payment_method' => ['required', 'in:cash,bank_transfer,card'],
-            'payment_reference' => ['nullable', 'string', 'max:120'],
+            'payment_reference' => ['required_if:payment_method,bank_transfer', 'nullable', 'string', 'max:120'],
             'delivery_method' => ['required', 'in:pickup,delivery'],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $product = $this->findProduct($data['item_type'], (int) $data['item_id']);
-        $variant = $this->findVariant($product, $data['product_variant_id'] ?? null);
+        $existingOrder = Order::where('checkout_token', $data['checkout_token'])->first();
 
-        if ($product?->variants()->where('is_active', true)->exists() && ! $variant) {
-            return back()->withErrors(['product_variant_id' => 'Please select an available variant.'])->withInput();
+        if ($existingOrder) {
+            if ($existingOrder->customer_phone !== $data['customer_phone']) {
+                throw ValidationException::withMessages([
+                    'checkout_token' => 'This checkout request has already been used.',
+                ]);
+            }
+
+            return redirect()->route('orders.success', $existingOrder->access_token);
         }
 
-        $availableStock = $variant?->stock ?? $product?->stock ?? 0;
+        $order = DB::transaction(function () use ($data, $request) {
+            $product = $this->findProductForUpdate($data['item_type'], (int) $data['item_id']);
 
-        if (! $product || $availableStock < $data['quantity']) {
-            return back()->withErrors(['quantity' => 'Requested quantity is not available in stock.'])->withInput();
-        }
+            if (! $product) {
+                throw ValidationException::withMessages([
+                    'item_id' => 'This product is no longer available.',
+                ]);
+            }
 
-        $order = DB::transaction(function () use ($data, $product, $variant, $request) {
+            $variant = $this->findVariantForUpdate($product, $data['product_variant_id'] ?? null);
+            $hasActiveVariants = $product->variants()->where('is_active', true)->exists();
+
+            if ($hasActiveVariants && ! $variant) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => 'Please select an available variant.',
+                ]);
+            }
+
             $quantity = (int) $data['quantity'];
+            $this->reserveStock($product, $variant, $quantity);
+
             $unitPrice = $variant?->price ?? $product->price;
             $offer = $product->activeOffer();
             $discountPerUnit = $offer ? (int) round($unitPrice * $offer->discount_percentage / 100) : 0;
             $lineTotal = ($unitPrice - $discountPerUnit) * $quantity;
-
-            $variant ? $variant->decrement('stock', $quantity) : $product->decrement('stock', $quantity);
+            $deliveryFee = $data['delivery_method'] === 'delivery'
+                ? (int) Setting::getValue('delivery_fee', '1500')
+                : 0;
+            $reservationHours = max(1, (int) Setting::getValue('reservation_hours', '24'));
 
             $order = Order::create([
                 'order_number' => $this->nextOrderNumber(),
+                'access_token' => Str::random(48),
+                'checkout_token' => $data['checkout_token'],
                 'invoice_number' => $this->nextInvoiceNumber(),
                 'invoiced_at' => now(),
                 'user_id' => $request->user()?->id,
@@ -97,10 +127,12 @@ class OrderController extends Controller
                 'payment_method' => $data['payment_method'],
                 'payment_reference' => $data['payment_reference'] ?? null,
                 'payment_status' => 'pending',
+                'reserved_until' => now()->addHours($reservationHours),
                 'delivery_method' => $data['delivery_method'],
                 'subtotal' => $unitPrice * $quantity,
                 'discount_total' => $discountPerUnit * $quantity,
-                'total' => $lineTotal,
+                'delivery_fee' => $deliveryFee,
+                'total' => $lineTotal + $deliveryFee,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -117,20 +149,24 @@ class OrderController extends Controller
                 'line_total' => $lineTotal,
             ]);
 
-            NotificationLog::create([
-                'order_id' => $order->id,
-                'channel' => 'admin',
-                'recipient' => 'shop-admin',
-                'subject' => 'New order request '.$order->order_number,
-                'message' => $order->customer_name.' reserved '.$product->name.' for Rs. '.number_format($order->total).'.',
-                'status' => 'sent',
-                'sent_at' => now(),
-            ]);
-
             return $order;
-        });
+        }, 3);
 
-        return redirect()->route('orders.success', $order)->with('status', 'Order request sent. We will contact you shortly.');
+        $notifications->orderPlaced($order);
+
+        return redirect()->route('orders.success', $order->access_token)
+            ->with('status', 'Order request sent. We will contact you shortly.');
+    }
+
+    public function index(Request $request)
+    {
+        return view('store.orders', [
+            'orders' => $request->user()
+                ->orders()
+                ->with('items')
+                ->latest()
+                ->paginate(10),
+        ]);
     }
 
     public function success(Order $order)
@@ -143,16 +179,20 @@ class OrderController extends Controller
         return view('store.invoice', ['order' => $order->load('items')]);
     }
 
-    private function findProduct(string $type, int $id): ?Model
+    private function findProductForUpdate(string $type, int $id): ?Model
     {
-        return $type === 'phone'
-            ? Phone::with(['activeOffers', 'variants'])->find($id)
-            : Accessory::with(['activeOffers', 'variants'])->find($id);
+        $class = $type === 'phone' ? Phone::class : Accessory::class;
+
+        return $class::query()
+            ->where('is_active', true)
+            ->with('activeOffers')
+            ->lockForUpdate()
+            ->find($id);
     }
 
-    private function findVariant(?Model $product, mixed $variantId): ?ProductVariant
+    private function findVariantForUpdate(Model $product, mixed $variantId): ?ProductVariant
     {
-        if (! $product || ! $variantId) {
+        if (! $variantId) {
             return null;
         }
 
@@ -160,13 +200,30 @@ class OrderController extends Controller
             ->where('product_type', $product::class)
             ->where('product_id', $product->id)
             ->where('is_active', true)
+            ->lockForUpdate()
             ->find($variantId);
+    }
+
+    private function reserveStock(Model $product, ?ProductVariant $variant, int $quantity): void
+    {
+        $target = $variant ?? $product;
+
+        $updated = $target::query()
+            ->whereKey($target->getKey())
+            ->where('stock', '>=', $quantity)
+            ->decrement('stock', $quantity);
+
+        if ($updated !== 1) {
+            throw ValidationException::withMessages([
+                'quantity' => 'The requested quantity is no longer available. Please choose a lower quantity.',
+            ]);
+        }
     }
 
     private function nextOrderNumber(): string
     {
         do {
-            $number = 'TS-' . now()->format('Ymd') . '-' . str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+            $number = 'TS-'.now()->format('Ymd').'-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         } while (Order::where('order_number', $number)->exists());
 
         return $number;
@@ -175,7 +232,7 @@ class OrderController extends Controller
     private function nextInvoiceNumber(): string
     {
         do {
-            $number = 'INV-' . now()->format('Ymd') . '-' . str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+            $number = 'INV-'.now()->format('Ymd').'-'.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         } while (Order::where('invoice_number', $number)->exists());
 
         return $number;

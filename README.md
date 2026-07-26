@@ -1,72 +1,82 @@
-# TechSphere Phone Shop Management System
+# TechSphere Mobile
 
-TechSphere is a Laravel phone shop management system. Customers can browse phones and accessories, compare device specifications, save phones to a wishlist, and place reservation orders. Admin users can manage phones, variants, brands, accessories, offers, orders, notifications, and shop settings.
+A Laravel storefront and back-office system for a Sri Lankan mobile phone shop. Customers can discover products, compare devices, save a wishlist, reserve stock, select delivery and payment options, track orders, and print invoices. Staff can manage the full catalogue, variants, stock, offers, payments, fulfilment, notifications, and store settings.
 
-## Features
+## Main Features
 
-- Public phone catalog with search and filters
-- Phone details page with specs and WhatsApp order link
-- Accessory catalog by category
-- Three-phone comparison page
-- User registration, login, logout, and wishlist
-- Customer order requests with admin status management
-- Payment method, payment reference, and admin payment status tracking
-- Auto-generated invoice numbers with printable invoice view
-- Notification log for new orders and customer status updates
-- SKU-level variants for color, storage, price, and stock
-- Stock reservation and restore logic for order/cancel flows
-- Admin dashboard with inventory statistics
-- Admin CRUD for phones, variants, brands, accessories, offers, and notification logs
-- Offers can be assigned to selected phones and accessories
-- Global WhatsApp number and shop email settings
-- SQLite database with demo seed data
+- Searchable phone and accessory catalogues with stock-aware filters
+- Product variants for storage, colour, SKU, price, status, and inventory
+- Date-controlled offers assignable to selected phones and accessories
+- Three-device comparison with duplicate and limit protection
+- Customer accounts, wishlists, secure order tracking, and printable invoices
+- Pickup or delivery checkout with configurable delivery fee
+- Cash, bank transfer, or card-at-store payment records
+- Atomic stock reservation, cancellation restore, and expired-order release
+- Idempotent checkout submission and rate limiting
+- Admin dashboard with low-stock, order, revenue, and fulfilment views
+- Catalogue publishing controls and local image uploads
+- Email notification delivery with retryable audit logs
+- Configurable store contact, WhatsApp, opening hours, bank, and delivery details
+- Responsive storefront and compact mobile-ready admin interface
 
-## Tech Stack
+## Technology
 
-- Laravel 12
-- PHP 8.2+
-- SQLite by default
-- Blade templates
-- Custom CSS
-- Laravel authentication using the built-in auth guard
-- Eloquent models, migrations, seeders, controllers, and middleware
+- PHP 8.2+ and Laravel 12
+- Blade, vanilla JavaScript, and custom responsive CSS
+- Eloquent ORM, middleware, validation, rate limiting, mail, and scheduler
+- SQLite by default; MySQL or PostgreSQL can be configured through `.env`
+- PHPUnit feature tests
 
-## Demo Credentials
+## Local Setup
 
-Admin:
-
-```text
-Email: admin@techsphere.test
-Password: password
-```
-
-Customer:
-
-```text
-Email: user@techsphere.test
-Password: password
-```
-
-## Run Locally
-
-```bash
+```powershell
 composer install
-php artisan migrate:fresh --seed
+Copy-Item .env.example .env
+php artisan key:generate
+New-Item database/database.sqlite -ItemType File -Force
+php artisan migrate --seed
+php artisan storage:link
 php artisan serve
 ```
 
-Open:
+Open `http://127.0.0.1:8000`. The admin panel is available at `http://127.0.0.1:8000/admin`.
+
+Local and test environments receive these seed accounts:
 
 ```text
-http://127.0.0.1:8000
+Admin:    admin@techsphere.test / password
+Customer: user@techsphere.test / password
 ```
 
-Admin panel:
+For a production environment, create an administrator interactively:
 
-```text
-http://127.0.0.1:8000/admin
+```powershell
+php artisan admin:create admin@example.com --name="Store Admin"
 ```
 
-## Notes
+## Background Tasks
 
-This version intentionally uses hosted image URLs and SQLite so it is easy to run locally. The original raw PHP project was rebuilt into Laravel structure with routes, controllers, models, migrations, seeders, middleware, and Blade views.
+Run the Laravel scheduler so expired unpaid reservations are cancelled and their stock is returned:
+
+```powershell
+php artisan schedule:work
+```
+
+For production, configure the server to execute `php artisan schedule:run` every minute.
+
+## Production Checklist
+
+- Set `APP_ENV=production`, `APP_DEBUG=false`, and the public `APP_URL`.
+- Configure a production database and run `php artisan migrate --force`.
+- Configure SMTP variables for customer and staff email notifications.
+- Replace the seeded store, bank, phone, WhatsApp, address, and delivery details in Admin > Settings.
+- Create a secure administrator with `admin:create`; fixed demo accounts are never seeded in production.
+- Serve the application through a web server with HTTPS and keep the scheduler running.
+- Connect a PCI-compliant payment provider before accepting online card payments. The included card option records payment at the physical store; it is not an online gateway.
+
+## Verification
+
+```powershell
+php artisan test
+php artisan route:list
+```

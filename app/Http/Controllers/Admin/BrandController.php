@@ -24,7 +24,7 @@ class BrandController extends Controller
      */
     public function create()
     {
-        return view('admin.brands.form', ['brand' => new Brand()]);
+        return view('admin.brands.form', ['brand' => new Brand]);
     }
 
     /**
@@ -68,6 +68,12 @@ class BrandController extends Controller
      */
     public function destroy(Brand $brand)
     {
+        if ($brand->phones()->exists()) {
+            return back()->withErrors([
+                'delete' => 'Move or remove this brand\'s phones before deleting the brand.',
+            ]);
+        }
+
         $brand->delete();
 
         return redirect()->route('admin.brands.index')->with('status', 'Brand deleted.');

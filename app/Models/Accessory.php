@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use Illuminate\Database\Eloquent\Model;
 
 class Accessory extends Model
 {
@@ -18,7 +19,17 @@ class Accessory extends Model
         'image_url',
         'description',
         'stock',
+        'is_active',
     ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('is_active', true);
+    }
 
     public function offers(): BelongsToMany
     {
@@ -61,8 +72,12 @@ class Accessory extends Model
 
     public function availableStock(): int
     {
-        if ($this->relationLoaded('variants') && $this->variants->count() > 0) {
-            return (int) $this->variants->where('is_active', true)->sum('stock');
+        $variants = $this->relationLoaded('variants')
+            ? $this->variants
+            : $this->variants()->get(['stock', 'is_active']);
+
+        if ($variants->isNotEmpty()) {
+            return (int) $variants->where('is_active', true)->sum('stock');
         }
 
         return $this->stock;

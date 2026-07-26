@@ -7,6 +7,7 @@ use App\Models\Accessory;
 use App\Models\Offer;
 use App\Models\Phone;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class OfferController extends Controller
 {
@@ -26,7 +27,7 @@ class OfferController extends Controller
     public function create()
     {
         return view('admin.offers.form', [
-            'offer' => new Offer(),
+            'offer' => new Offer,
             'phones' => Phone::with('brand')->orderBy('name')->get(),
             'accessories' => Accessory::orderBy('name')->get(),
             'selectedPhones' => collect(),
@@ -107,6 +108,12 @@ class OfferController extends Controller
             'accessory_ids' => ['nullable', 'array'],
             'accessory_ids.*' => ['integer', 'exists:accessories,id'],
         ]);
+
+        if (empty($validated['phone_ids']) && empty($validated['accessory_ids'])) {
+            throw ValidationException::withMessages([
+                'products' => 'Select at least one phone or accessory for this offer.',
+            ]);
+        }
 
         return [
             'offer' => collect($validated)->only(['title', 'discount_percentage', 'description', 'starts_at', 'ends_at'])->all(),

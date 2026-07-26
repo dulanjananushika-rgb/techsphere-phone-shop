@@ -12,13 +12,19 @@ class WishlistController extends Controller
     public function index(Request $request)
     {
         return view('store.wishlist', [
-            'items' => Wishlist::with('phone.brand', 'phone.activeOffers')->where('user_id', $request->user()->id)->latest()->get(),
+            'items' => Wishlist::with('phone.brand', 'phone.activeOffers')
+                ->where('user_id', $request->user()->id)
+                ->whereHas('phone', fn ($query) => $query->active())
+                ->latest()
+                ->get(),
             'whatsapp' => Setting::getValue('whatsapp_number', '94771234567'),
         ]);
     }
 
     public function toggle(Request $request, Phone $phone)
     {
+        abort_unless($phone->is_active, 404);
+
         $wishlist = Wishlist::query()
             ->where('user_id', $request->user()->id)
             ->where('phone_id', $phone->id)

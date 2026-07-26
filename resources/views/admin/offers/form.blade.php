@@ -8,15 +8,16 @@
     </div>
     <a class="btn" href="{{ route('admin.offers.index') }}">Back to offers</a>
 </div>
-<form class="card card-body" method="POST" action="{{ $offer->exists ? route('admin.offers.update', $offer) : route('admin.offers.store') }}">
+<form class="card card-body" method="POST" data-lock-submit action="{{ $offer->exists ? route('admin.offers.update', $offer) : route('admin.offers.store') }}">
     @csrf @if($offer->exists) @method('PUT') @endif
     <div class="grid grid-2">
-        <div class="form-group"><label>Campaign title</label><input name="title" value="{{ old('title', $offer->title) }}" placeholder="Back to Campus Deals" required></div>
-        <div class="form-group"><label>Discount percentage</label><input type="number" min="1" max="90" name="discount_percentage" value="{{ old('discount_percentage', $offer->discount_percentage) }}" required></div>
-        <div class="form-group"><label>Start date</label><input type="date" name="starts_at" value="{{ old('starts_at', optional($offer->starts_at)->format('Y-m-d')) }}" required></div>
-        <div class="form-group"><label>End date</label><input type="date" name="ends_at" value="{{ old('ends_at', optional($offer->ends_at)->format('Y-m-d')) }}" required></div>
+        <div class="form-group"><label for="offer-title">Campaign title</label><input id="offer-title" name="title" value="{{ old('title', $offer->title) }}" placeholder="Back to Campus Deals" required></div>
+        <div class="form-group"><label for="offer-discount">Discount percentage</label><input id="offer-discount" type="number" min="1" max="90" name="discount_percentage" value="{{ old('discount_percentage', $offer->discount_percentage) }}" required></div>
+        <div class="form-group"><label for="offer-start">Start date</label><input id="offer-start" type="date" name="starts_at" value="{{ old('starts_at', optional($offer->starts_at)->format('Y-m-d')) }}" required></div>
+        <div class="form-group"><label for="offer-end">End date</label><input id="offer-end" type="date" name="ends_at" value="{{ old('ends_at', optional($offer->ends_at)->format('Y-m-d')) }}" required></div>
     </div>
-    <div class="form-group"><label>Customer-facing description</label><textarea name="description" placeholder="Short, clear offer message customers will see.">{{ old('description', $offer->description) }}</textarea></div>
+    <div class="form-group"><label for="offer-description">Customer-facing description</label><textarea id="offer-description" name="description" placeholder="Short, clear offer message customers will see.">{{ old('description', $offer->description) }}</textarea></div>
+    @error('products')<div class="error-summary">{{ $message }}</div>@enderror
     <div class="grid grid-2">
         <div class="form-group">
             <label>Apply to phones</label>
@@ -41,6 +42,6 @@
             </div>
         </div>
     </div>
-    <button class="btn btn-primary">Save offer</button>
+    <button class="btn btn-primary" type="submit" data-loading-text="Saving offer...">Save offer</button>
 </form>
 @endsection

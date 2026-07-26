@@ -23,18 +23,20 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = User::factory()->create([
-            'name' => 'TechSphere Admin',
-            'email' => 'admin@techsphere.test',
-            'password' => 'password',
-            'is_admin' => true,
-        ]);
+        if (app()->environment(['local', 'testing'])) {
+            User::factory()->create([
+                'name' => 'TechSphere Admin',
+                'email' => 'admin@techsphere.test',
+                'password' => 'password',
+                'is_admin' => true,
+            ]);
 
-        User::factory()->create([
-            'name' => 'Demo Customer',
-            'email' => 'user@techsphere.test',
-            'password' => 'password',
-        ]);
+            User::factory()->create([
+                'name' => 'Demo Customer',
+                'email' => 'user@techsphere.test',
+                'password' => 'password',
+            ]);
+        }
 
         $brands = collect([
             ['name' => 'Apple', 'description' => 'Premium iOS devices with long software support.'],
@@ -49,7 +51,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'iPhone 16 Pro Max',
                 'price' => 565000,
                 'old_price' => 589000,
-                'image_url' => 'https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=900&q=80',
+                'image_url' => '/images/products/iphone-16-pro-max.jpg',
                 'ram' => '8GB',
                 'storage' => '256GB',
                 'display' => '6.9-inch Super Retina XDR',
@@ -66,7 +68,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Galaxy S25 Ultra',
                 'price' => 489000,
                 'old_price' => 515000,
-                'image_url' => 'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?auto=format&fit=crop&w=900&q=80',
+                'image_url' => '/images/products/galaxy-s25-ultra.jpg',
                 'ram' => '12GB',
                 'storage' => '512GB',
                 'display' => '6.8-inch Dynamic AMOLED',
@@ -83,7 +85,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Redmi Note 13 Pro',
                 'price' => 112000,
                 'old_price' => 129000,
-                'image_url' => 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=900&q=80',
+                'image_url' => '/images/products/redmi-note-13-pro.png',
                 'ram' => '8GB',
                 'storage' => '256GB',
                 'display' => '6.67-inch AMOLED',
@@ -100,7 +102,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Oppo Reno 14F',
                 'price' => 148000,
                 'old_price' => null,
-                'image_url' => 'https://images.unsplash.com/photo-1605236453806-6ff36851218e?auto=format&fit=crop&w=900&q=80',
+                'image_url' => '/images/products/oppo-reno-14f.webp',
                 'ram' => '12GB',
                 'storage' => '256GB',
                 'display' => '6.7-inch AMOLED',
@@ -233,8 +235,17 @@ class DatabaseSeeder extends Seeder
         ]);
 
         Setting::insert([
+            ['key' => 'store_name', 'value' => 'TechSphere Mobile', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'whatsapp_number', 'value' => '94771234567', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'shop_email', 'value' => 'hello@techsphere.test', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'shop_phone', 'value' => '+94 77 123 4567', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'shop_address', 'value' => 'Colombo, Sri Lanka', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'opening_hours', 'value' => 'Daily, 9.00 AM - 8.00 PM', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'delivery_fee', 'value' => '1500', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'reservation_hours', 'value' => '24', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'bank_name', 'value' => 'Commercial Bank', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'bank_account_name', 'value' => 'TechSphere Mobile', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'bank_account_number', 'value' => '0000000000', 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 }
