@@ -3,6 +3,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const navToggle = document.querySelector('[data-nav-toggle]');
     const adminToggle = document.querySelector('[data-admin-toggle]');
     const sidebarBackdrop = document.querySelector('[data-sidebar-backdrop]');
+    const nav = document.querySelector('.nav');
+
+    // Sticky Frosted Glass Scroll Effect
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 25) {
+            nav?.classList.add('nav-scrolled');
+        } else {
+            nav?.classList.remove('nav-scrolled');
+        }
+    }, { passive: true });
 
     navToggle?.addEventListener('click', () => {
         const open = body.classList.toggle('nav-open');
@@ -28,6 +38,52 @@ document.addEventListener('DOMContentLoaded', () => {
             closeSidebar();
         }
     });
+
+    // 3D Perspective Card Tilt & Interactive Cursor Spotlight Sheen
+    const cards = document.querySelectorAll('.card.product-card, .brand-tile, .offer-card');
+    cards.forEach((card) => {
+        card.addEventListener('mousemove', (e) => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const rotateX = ((y - centerY) / centerY) * -5;
+            const rotateY = ((x - centerX) / centerX) * 5;
+
+            card.style.setProperty('--mouse-x', `${x}px`);
+            card.style.setProperty('--mouse-y', `${y}px`);
+            card.style.transform = `perspective(1000px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateY(-6px)`;
+        });
+
+        card.addEventListener('mouseleave', () => {
+            card.style.transform = '';
+            card.style.removeProperty('--mouse-x');
+            card.style.removeProperty('--mouse-y');
+        });
+    });
+
+    // Staggered Scroll Reveal Observer
+    const revealTargets = document.querySelectorAll('.product-card, .brand-tile, .offer-card, .section-head, .hero-copy');
+    if ('IntersectionObserver' in window && revealTargets.length > 0) {
+        const revealObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('reveal-visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
+
+        revealTargets.forEach((target) => {
+            target.classList.add('reveal-init');
+            const siblingIndex = Array.from(target.parentElement?.children || []).indexOf(target);
+            if (siblingIndex > 0) {
+                target.style.transitionDelay = `${(siblingIndex % 4) * 0.08}s`;
+            }
+            revealObserver.observe(target);
+        });
+    }
 
     document.querySelectorAll('[data-confirm]').forEach((form) => {
         form.addEventListener('submit', (event) => {
@@ -132,8 +188,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (stockNode) {
                 stockNode.textContent = selected.stock > 0
-                    ? `${selected.stock} unit${selected.stock === 1 ? '' : 's'} available`
-                    : 'Currently out of stock';
+                    ? `${selected.stock} unit${selected.stock === 1 ? '' : 's'} available in showroom`
+                    : 'Currently out of showroom stock';
             }
 
             if (subtotalNode) {
